@@ -18,7 +18,7 @@ def home():
     return "Bot is alive!"
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
-    keep_alive_app.run(host='0.0.0.0', port=port).start()
+    Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()
 
 
 # --- Config (Reading from Heroku Environment) ---
