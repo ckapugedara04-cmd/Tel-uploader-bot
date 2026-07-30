@@ -16,10 +16,10 @@ keep_alive_app = Flask('')
 @keep_alive_app.route('/')
 def home():
     return "Bot is alive!"
-
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
-    Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()
+    keep_alive_app.run(host='0.0.0.0', port=port)
+
 
 # --- Config (Reading from Heroku Environment) ---
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
