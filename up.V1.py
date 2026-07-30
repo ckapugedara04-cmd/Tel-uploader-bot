@@ -16,9 +16,13 @@ keep_alive_app = Flask('')
 @keep_alive_app.route('/')
 def home():
     return "Bot is alive!"
+
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
-    Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()
+    keep_alive_app.run(host='0.0.0.0', port=port)
+
+# Background Thread එකකින් Web Server එක Start කිරීම
+Thread(target=keep_alive).start()
 
 
 # --- Config (Reading from Heroku Environment) ---
