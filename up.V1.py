@@ -24,8 +24,7 @@ def keep_alive():
 # Background Thread එකකින් Web Server එක Start කිරීම
 Thread(target=keep_alive).start()
 
-
-# --- Config (Reading from Heroku Environment) ---
+# --- Config (Reading from Environment) ---
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_IDS_STR = os.environ.get('ADMIN_IDS', '0')
 try:
@@ -83,8 +82,25 @@ def load_language(lang_code):
         with open(os.path.join("languages", f"{lang_code}.json"), "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        with open(os.path.join("languages", f"{DEFAULT_LANGUAGE}.json"), "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(os.path.join("languages", f"{DEFAULT_LANGUAGE}.json"), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {
+                "upload_button": "📤 Upload",
+                "delete_button": "🗑 Delete",
+                "get_file_button": "📥 Get File",
+                "redeem_button": "🎁 Redeem",
+                "caption_button": "✏️ Caption",
+                "support_button": "💬 Support",
+                "profile_button": "👤 Profile",
+                "start_message": "Bot එකට සාදරයෙන් පිළිගනිමු! වීඩියෝ/File එකක් යවා Download Link එක ලබාගන්න.",
+                "default_caption": "Uploaded via Bot",
+                "upload_success_message": "<b>File ID:</b> {file_id}\n\n<b>Download Link:</b> {download_link}",
+                "download_link_error": "කණගාටුයි, වලංගු නොවන Link එකකි.",
+                "file_not_found": "File එක හමු වූයේ නැත.",
+                "main_menu_back": "ප්‍රධාන මෙනුවට පැමිණියා."
+            }
 
 def get_user_lang_code(user_id):
     user_doc = users_collection.find_one({'_id': user_id}, {'language': 1})
@@ -102,95 +118,113 @@ def send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
 
 def send_file_by_id(chat_id, file_type, file_id, caption=None):
     try:
-        if file_type == "photo": bot.send_photo(chat_id, file_id, caption=caption)
-        elif file_type == "video": bot.send_video(chat_id, file_id, caption=caption)
-        elif file_type == "document": bot.send_document(chat_id, file_id, caption=caption)
-        elif file_type == "audio": bot.send_audio(chat_id, file_id, caption=caption)
+        if file_type == "photo":
+            bot.send_photo(chat_id, file_id, caption=caption)
+        elif file_type == "video":
+            bot.send_video(chat_id, file_id, caption=caption)
+        elif file_type == "document":
+            bot.send_document(chat_id, file_id, caption=caption)
+        elif file_type in ["audio", "music"]:
+            bot.send_audio(chat_id, file_id, caption=caption)
     except Exception as e:
         print(f"Error sending file by ID to {chat_id}: {e}")
 
 # --- State Management ---
 user_states = {}
-def set_state(user_id, state, data=None): user_states[user_id] = {'state': state, 'data': data}
-def get_state(user_id): return user_states.get(user_id, {}).get('state')
-def get_state_data(user_id): return user_states.get(user_id, {}).get('data')
-def delete_state(user_id): user_states.pop(user_id, None)
+
+def set_state(user_id, state, data=None):
+    user_states[user_id] = {'state': state, 'data': data}
+
+def get_state(user_id):
+    return user_states.get(user_id, {}).get('state')
+
+def get_state_data(user_id):
+    return user_states.get(user_id, {}).get('data')
+
+def delete_state(user_id):
+    user_states.pop(user_id, None)
 
 # --- Keyboards ---
 def main_keyboard(lang_code):
     lang_data = load_language(lang_code)
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1, btn2, btn3 = types.KeyboardButton(lang_data["upload_button"]), types.KeyboardButton(lang_data["delete_button"]), types.KeyboardButton(lang_data["get_file_button"])
-    btn4, btn5, btn6, btn7 = types.KeyboardButton(lang_data["redeem_button"]), types.KeyboardButton(lang_data["caption_button"]), types.KeyboardButton(lang_data["support_button"]), types.KeyboardButton(lang_data["profile_button"])
+    btn1, btn2, btn3 = types.KeyboardButton(lang_data.get("upload_button", "📤 Upload")), types.KeyboardButton(lang_data.get("delete_button", "🗑 Delete")), types.KeyboardButton(lang_data.get("get_file_button", "📥 Get File"))
+    btn4, btn5, btn6, btn7 = types.KeyboardButton(lang_data.get("redeem_button", "🎁 Redeem")), types.KeyboardButton(lang_data.get("caption_button", "✏️ Caption")), types.KeyboardButton(lang_data.get("support_button", "💬 Support")), types.KeyboardButton(lang_data.get("profile_button", "👤 Profile"))
     markup.add(btn1); markup.add(btn2, btn3); markup.add(btn4, btn5); markup.add(btn6, btn7)
     return markup
 
-def admin_keyboard(lang_code):
-    lang_data = load_language(lang_code)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton(lang_data["admin_stats_button"]), types.KeyboardButton(lang_data["admin_bot_status_button"]))
-    markup.add(types.KeyboardButton(lang_data["admin_ban_button"]), types.KeyboardButton(lang_data["admin_unban_button"]))
-    markup.add(types.KeyboardButton(lang_data["admin_broadcast_button"]), types.KeyboardButton(lang_data["admin_forward_broadcast_button"]))
-    return markup
-
-def back_keyboard(lang_code):
-    lang_data = load_language(lang_code)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton(lang_data["back_button"]))
-    return markup
-
-# --- Command Handlers ---
+# --- Command & Direct Handlers ---
 @bot.message_handler(commands=['start'])
 def start_command_handler(message):
     user_id = message.from_user.id
     lang_data = get_user_lang(user_id)
+    
     if len(message.text.split()) > 1 and message.text.split()[1].startswith('getfile_'):
         try:
             file_info = message.text.split()[1].replace('getfile_', '')
             global_file_id, token = file_info.split('_')
             file_doc = files_collection.find_one({'_id': int(global_file_id)})
-            if file_doc and file_doc["token"] == token:
+            if file_doc and file_doc.get("token") == token:
                 send_file_by_id(message.chat.id, file_doc["file_type"], file_doc["file_id"])
             else:
-                send_message(message.chat.id, lang_data["download_link_error"])
+                send_message(message.chat.id, lang_data.get("download_link_error", "Link invalid!"))
         except Exception as e:
             print(f"Error in getfile link: {e}")
-            send_message(message.chat.id, lang_data["download_link_error"])
+            send_message(message.chat.id, lang_data.get("download_link_error", "Link invalid!"))
     else:
         users_collection.update_one({'_id': user_id}, {'$set': {'username': message.from_user.username, 'first_name': message.from_user.first_name}}, upsert=True)
-        send_message(message.chat.id, lang_data["start_message"], reply_markup=main_keyboard(DEFAULT_LANGUAGE))
+        send_message(message.chat.id, lang_data.get("start_message", "Welcome!"), reply_markup=main_keyboard(DEFAULT_LANGUAGE))
 
-# --- State & Button Handlers ---
-@bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'audio'], func=lambda message: get_state(message.from_user.id) is not None)
-def master_state_handler(message):
-    state = get_state(message.from_user.id)
-    if state == "upload": upload_media_handler(message)
+# කෙලින්ම වීඩියෝ/ෆොටෝ/Files යවන විට process වන කොටස
+@bot.message_handler(content_types=['photo', 'video', 'document', 'audio'])
+def direct_media_handler(message):
+    upload_media_handler(message)
 
+# Text Buttons වලට උත්තර දෙන කොටස
 @bot.message_handler(func=lambda message: message.content_type == 'text')
 def button_handlers(message):
-    pass
+    user_id = message.from_user.id
+    lang_data = get_user_lang(user_id)
+    text = message.text
+
+    if text == lang_data.get("profile_button", "👤 Profile"):
+        profile_button_handler(message)
+    elif text == lang_data.get("upload_button", "📤 Upload"):
+        send_message(message.chat.id, "කරුණාකර ඔබගේ Video/Photo/File එක එවන්න:")
+    else:
+        send_message(message.chat.id, "කරුණාකර වීඩියෝවක් හෝ ෆයිල් එකක් එවන්න.", reply_markup=main_keyboard(get_user_lang_code(user_id)))
 
 # --- Handler Implementations ---
 def upload_media_handler(message):
     user_id = message.from_user.id
     lang_data = get_user_lang(user_id)
     media_type, file_id = None, None
-    if message.photo: media_type, file_id = "photo", message.photo[-1].file_id
-    elif message.video: media_type, file_id = "video", message.video.file_id
-    elif message.document: media_type, file_id = "document", message.document.file_id
-    elif message.audio: media_type, file_id = "music", message.audio.file_id
+
+    if message.photo:
+        media_type, file_id = "photo", message.photo[-1].file_id
+    elif message.video:
+        media_type, file_id = "video", message.video.file_id
+    elif message.document:
+        media_type, file_id = "document", message.document.file_id
+    elif message.audio:
+        media_type, file_id = "music", message.audio.file_id
     else:
-        send_message(message.chat.id, lang_data["upload_invalid_media_type"], reply_markup=main_keyboard(get_user_lang_code(user_id)))
-        delete_state(user_id)
+        send_message(message.chat.id, "නොගැලපෙන File වර්ගයකි.", reply_markup=main_keyboard(get_user_lang_code(user_id)))
         return
 
     user_doc = users_collection.find_one({'_id': user_id}, {'caption': 1})
-    caption = user_doc.get('caption', lang_data["default_caption"]) if user_doc else lang_data["default_caption"]
-
-    sent_message = bot.copy_message(STORAGE_GROUP_ID, message.chat.id, message.message_id, caption=caption)
+    caption = user_doc.get('caption', lang_data.get("default_caption", "Uploaded File")) if user_doc else lang_data.get("default_caption", "Uploaded File")
+    
+    try:
+        sent_message = bot.copy_message(STORAGE_GROUP_ID, message.chat.id, message.message_id, caption=caption)
+    except Exception as e:
+        print(f"Error copying message to storage group: {e}")
+        send_message(message.chat.id, "Storage Group එකට File එක යැවීමට නොහැකි විය. Group ID එක සහ Bot AdminPermissions පරීක්ෂා කරන්න.")
+        return
 
     global_file_id = get_next_sequence_value('global_file_id')
     token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
     file_doc = {
         '_id': global_file_id,
         'uploader_id': user_id,
@@ -203,51 +237,16 @@ def upload_media_handler(message):
     files_collection.insert_one(file_doc)
 
     download_link = f"https://t.me/{bot.get_me().username}?start=getfile_{global_file_id}_{token}"
-    send_message(message.chat.id, lang_data["upload_success_message"].format(file_id=global_file_id, download_link=download_link), reply_markup=main_keyboard(get_user_lang_code(user_id)))
-    delete_state(user_id)
-
-def get_file_by_id_handler(message):
-    user_id = message.from_user.id
-    lang_data = get_user_lang(user_id)
-    file_id_to_get = message.text
-    if not file_id_to_get.isdigit():
-        send_message(message.chat.id, lang_data["delete_file_invalid_id"])
-        return
-    file_doc = files_collection.find_one({'_id': int(file_id_to_get)})
-    if file_doc:
-        send_file_by_id(user_id, file_doc["file_type"], file_doc["file_id"])
-    else:
-        send_message(user_id, lang_data["file_not_found"])
-    delete_state(user_id)
-    send_message(message.chat.id, lang_data["main_menu_back"], reply_markup=main_keyboard(get_user_lang_code(user_id)))
-
-def delete_file_handler(message):
-    user_id = message.from_user.id
-    lang_data = get_user_lang(user_id)
-    file_id_to_delete = message.text
-    if not file_id_to_delete.isdigit():
-        send_message(message.chat.id, lang_data["delete_file_invalid_id"])
-        return
-    file_doc = files_collection.find_one({'_id': int(file_id_to_delete)})
-    if file_doc and (file_doc['uploader_id'] == user_id or is_admin(user_id)):
-        files_collection.delete_one({'_id': int(file_id_to_delete)})
-        try:
-            bot.delete_message(STORAGE_GROUP_ID, file_doc['message_id_in_storage'])
-        except Exception as e:
-            print(f"Could not delete message from storage group: {e}")
-        send_message(message.chat.id, lang_data["delete_file_success"].format(file_id=file_id_to_delete))
-    else:
-        send_message(message.chat.id, lang_data["file_not_found"])
-    delete_state(user_id)
-    send_message(message.chat.id, lang_data["main_menu_back"], reply_markup=main_keyboard(get_user_lang_code(user_id)))
+    msg_template = lang_data.get("upload_success_message", "<b>File ID:</b> {file_id}\n\n<b>Download Link:</b> {download_link}")
+    
+    send_message(message.chat.id, msg_template.format(file_id=global_file_id, download_link=download_link), reply_markup=main_keyboard(get_user_lang_code(user_id)))
 
 def profile_button_handler(message):
     user_id = message.from_user.id
     lang_data = get_user_lang(user_id)
     file_count = files_collection.count_documents({'uploader_id': user_id})
-    user_doc = users_collection.find_one({'_id': user_id})
-    first_name = user_doc.get('first_name', 'N/A') if user_doc else message.from_user.first_name
-    profile_text = lang_data["profile_message"].format(first_name=first_name, user_id=user_id, file_count=file_count)
+    first_name = message.from_user.first_name
+    profile_text = f"👤 <b>ඔබගේ විස්තර:</b>\n\n<b>නම:</b> {first_name}\n<b>User ID:</b> <code>{user_id}</code>\n<b>එකතු කළ Files ගණන:</b> {file_count}"
     send_message(message.chat.id, profile_text, reply_markup=main_keyboard(get_user_lang_code(user_id)))
 
 # --- Main ---
