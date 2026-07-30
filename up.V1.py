@@ -256,5 +256,4 @@ if __name__ == "__main__":
         counters_collection.insert_one({'_id': 'global_file_id', 'sequence_value': 0})
     get_admin_list()
     print("Bot starting with Global File ID system...")
-    keep_alive()
     bot.infinity_polling()
