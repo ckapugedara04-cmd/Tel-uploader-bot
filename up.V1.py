@@ -10,12 +10,12 @@ import random
 import string
 from datetime import datetime
 
-# --- Keep Alive Web Server (for Render) ---
+# --- Keep Alive Web Server (for Render & UptimeRobot) ---
 keep_alive_app = Flask('')
 
 @keep_alive_app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Bot is alive!", 200
 
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
