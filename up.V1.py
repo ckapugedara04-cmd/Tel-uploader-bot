@@ -9,7 +9,8 @@ def home():
 
 def keep_alive():
     port = int(os.environ.get('PORT', 8080))
-    Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()import telebot
+  Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()
+import telebot
 import os
 import pymongo
 import json
