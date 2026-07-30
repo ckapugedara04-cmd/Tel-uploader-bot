@@ -198,33 +198,62 @@ def button_handlers(message):
 def upload_media_handler(message):
     user_id = message.from_user.id
     lang_data = get_user_lang(user_id)
-    media_type, file_id = None, None
+    media_type, file_id, thumbnail_id = None, None, None
 
+    # --- වීඩියෝ/ෆොටෝ/Files වර්ගය හඳුනාගැනීම සහ Thumbnail එක ලබාගැනීම ---
     if message.photo:
         media_type, file_id = "photo", message.photo[-1].file_id
     elif message.video:
         media_type, file_id = "video", message.video.file_id
+        # වීඩියෝවට Thumbnail එකක් තියෙනවා නම් එය ලබාගනී
+        if message.video.thumbnail:
+            thumbnail_id = message.video.thumbnail.file_id
     elif message.document:
         media_type, file_id = "document", message.document.file_id
+        # Document එකට Thumbnail එකක් තියෙනවා නම් එය ලබාගනී
+        if message.document.thumbnail:
+            thumbnail_id = message.document.thumbnail.file_id
     elif message.audio:
         media_type, file_id = "music", message.audio.file_id
     else:
         send_message(message.chat.id, "නොගැලපෙන File වර්ගයකි.", reply_markup=main_keyboard(get_user_lang_code(user_id)))
         return
 
+    # User සකසා ඇති Caption එක ලබාගැනීම
     user_doc = users_collection.find_one({'_id': user_id}, {'caption': 1})
-    caption = user_doc.get('caption', lang_data.get("default_caption", "Uploaded File")) if user_doc else lang_data.get("default_caption", "Uploaded File")
+    caption_template = user_doc.get('caption', lang_data.get("default_caption", "Uploaded File")) if user_doc else lang_data.get("default_caption", "Uploaded File")
     
+    # Global File ID සහ Unique Token එකක් සෑදීම
+    global_file_id = get_next_sequence_value('global_file_id')
+    token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
+    # --- Storage Group එකට යවන Message එක සකස් කිරීම ---
+    # User ට එවීමට බලාපොරොත්තු වන Download Link එක සාදා ගනී
+    download_link = f"https://t.me/{bot.get_me().username}?start=getfile_{global_file_id}_{token}"
+    
+    # Storage Group එකට යවන Caption එක සකසයි (User Caption + Download Link)
+    storage_caption = f"<b>{caption_template}</b>\n\n<b>Download Link:</b> {download_link}"
+
+    # --- Storage Group එකට File එක Copy කිරීම / Forward කිරීම ---
     try:
-        sent_message = bot.copy_message(STORAGE_GROUP_ID, message.chat.id, message.message_id, caption=caption)
+        if media_type == "photo":
+            # Photo එක Group එකට යවයි
+            sent_message = bot.send_photo(STORAGE_GROUP_ID, file_id, caption=storage_caption, parse_mode="HTML")
+        elif media_type == "video":
+            # Video එක Group එකට copy කරයි (Telegram Preview එකක් සමඟ)
+            sent_message = bot.copy_message(STORAGE_GROUP_ID, message.chat.id, message.message_id, caption=storage_caption, parse_mode="HTML")
+        elif media_type == "document" and thumbnail_id:
+            # Document එක Thumbnail එකක් සමඟ Group එකට යවයි
+            sent_message = bot.send_document(STORAGE_GROUP_ID, file_id, caption=storage_caption, parse_mode="HTML")
+        else:
+            # වෙනත් (document/audio) files Group එකට forward කරයි
+            sent_message = bot.copy_message(STORAGE_GROUP_ID, message.chat.id, message.message_id, caption=storage_caption, parse_mode="HTML")
     except Exception as e:
         print(f"Error copying message to storage group: {e}")
         send_message(message.chat.id, "Storage Group එකට File එක යැවීමට නොහැකි විය. Group ID එක සහ Bot AdminPermissions පරීක්ෂා කරන්න.")
         return
 
-    global_file_id = get_next_sequence_value('global_file_id')
-    token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-
+    # --- MongoDB එකට File විස්තර එකතු කිරීම ---
     file_doc = {
         '_id': global_file_id,
         'uploader_id': user_id,
@@ -232,13 +261,13 @@ def upload_media_handler(message):
         'file_type': media_type,
         'message_id_in_storage': sent_message.message_id,
         'token': token,
+        'thumbnail_id': thumbnail_id, # Thumbnail ID එකත් store කරයි
         'created_at': datetime.utcnow()
     }
     files_collection.insert_one(file_doc)
 
-    download_link = f"https://t.me/{bot.get_me().username}?start=getfile_{global_file_id}_{token}"
+    # --- User හට Upload සාර්ථක බව දැනුම් දීම ---
     msg_template = lang_data.get("upload_success_message", "<b>File ID:</b> {file_id}\n\n<b>Download Link:</b> {download_link}")
-    
     send_message(message.chat.id, msg_template.format(file_id=global_file_id, download_link=download_link), reply_markup=main_keyboard(get_user_lang_code(user_id)))
 
 def profile_button_handler(message):
