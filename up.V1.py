@@ -1,4 +1,15 @@
-import telebot
+from flask import Flask
+from threading import Thread
+
+keep_alive_app = Flask('')
+
+@keep_alive_app.route('/')
+def home():
+    return "Bot is alive!"
+
+def keep_alive():
+    port = int(os.environ.get('PORT', 8080))
+    Thread(target=lambda: keep_alive_app.run(host='0.0.0.0', port=port)).start()import telebot
 import os
 import pymongo
 import json
@@ -264,4 +275,5 @@ if __name__ == "__main__":
     
     get_admin_list() 
     print("Bot starting with Global File ID system...")
+    keep_alive()
     bot.infinity_polling()
